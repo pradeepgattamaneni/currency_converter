@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: currency-converter-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: currency-converter-app
+  template:
+    metadata:
+      labels:
+        app: currency-converter-app
+      annotations:
+        instrumentation.opentelemetry.io/inject-python: default/my-splunk-otel-collector
+    spec:
+      containers:
+        - name: currency-converter-app
+          image: quay.io/pgattamaneni/currency-converter-app:latest
+          ports:
+            - containerPort: 5000
+          env:
+            - name: SPLUNK_OTEL_AGENT
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(SPLUNK_OTEL_AGENT):4318"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            - name: OTEL_SERVICE_NAME
+              value: "currency"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=prod"
+          command: ["opentelemetry-instrument"]
+          args: ["python3", "app.py"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: currency-converter-app-service
+spec:
+  selector:
+    app: currency-converter-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: LoadBalancer
+
